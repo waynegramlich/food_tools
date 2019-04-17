@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+#<-------------------------------------------- 100 characters ------------------------------------>|
 
 # Web Sites:
 #     US Gov Food Search Site:  https://ndb.nal.usda.gov/ndb/search/list
@@ -198,24 +199,26 @@ class Food:
         #  format(fat_fraction + carbohydrates_fraction + protein_fraction))
         return (fat_fraction, carbohydrates_fraction, protein_fraction)
 
-    def summary_string(self):
+    def summary_string(self, scale=1.0):
         food = self
-        calories              = food.calories
-        total_fat             = food.total_fat
-        carbohydrates         = food.carbohydrates
-        protein               = food.protein
+        calories              = scale * food.calories
+        total_fat             = scale * food.total_fat
+        carbohydrates         = scale * food.carbohydrates
+        protein               = scale * food.protein
         caloric_grams         = total_fat + carbohydrates + protein
         total_fat_percent     = int(100.0 * total_fat / caloric_grams)
         carbohydrates_percent = int(100.0 * carbohydrates / caloric_grams)
         protein_percent       = int(100.0 * protein / caloric_grams)
-        summary ="{0}g~={1}(Fat)+{2}(Carb)+{3}g(Prot) (100%~={4}%+{5}%+{6}%)".format(
+        summary ="{0}cal {1}g~={2}(Fat)+{3}(Carb)+{4}g(Prot) (100%~={5}%+{6}%+{7}%)".format(
+          int(calories),
           int(caloric_grams),
           int(total_fat),
           int(carbohydrates),
           int(protein),
           total_fat_percent,
           carbohydrates_percent,
-          protein_percent)
+          protein_percent,
+          scale)
         return summary
 
     def to_string(self, heading=None, indent=0):
@@ -444,13 +447,14 @@ class Recipe:
     def process(self, client, scale=1.0):
         # Verify argument types:
         assert isinstance(client, UsdaClient)
-        assert isinstance(scale, float) or isinstacne(scale, int)
+        assert isinstance(scale, float) or isinstance(scale, int)
 
-        #print("=>Recipe.process(*)")
+        #print("=>Recipe.process(*, *, scale={0})".format(scale))
 
         # Process the *ingredients* in *recipe* (i.e. *self*):
         recipe = self
-        print("Recipe: {0}{1}".format(recipe.name, "" if scale == 1.0 else " x {0}".format(scale)))
+        print("Recipe: {0}{1}".format(recipe.name,
+          ("" if scale == 1.0 else " x {0:.2}".format(scale)) ))
         foods = list()
         total = Food.empty()
         ingredients = recipe.ingredients
@@ -484,24 +488,25 @@ class Recipe:
                 grams = amount * MASS_CONVERSIONS[units]
             else:
                 assert False, "No valid conversion for '{0}'".format(units)
-            scale = grams / 100.0
+            food_scale = grams / 100.0
             #print("grams={0} scale={1}".format(grams, scale))
-            scaled_food = food * scale
+            scaled_food = food * food_scale
             foods.append(food)
 
             total_grams += grams
             calories = scaled_food.calories
             total_calories += calories
-            print("[{0}] {1:.1f}g\t{2:.1f}g\t{3:.0f}kcal\t{4}".
-              format(ingredient_index, grams, total_grams, calories, description))
+            print("[{0:>2}] {1:>5}g{2:>5}g{3:>5}cal  {4:.2f} {5} {6}".
+              format(ingredient_index, int(grams), int(total_grams), int(calories),
+	      amount * scale, units, description))
             #print(scaled_food.to_string())
 
             total += scaled_food
 
-        print(total.summary_string())
+        print(total.summary_string(scale=scale))
         print("")
 
-        #print("<=Recipe.process(*)")
+        #print("<=Recipe.process(*, *, scale={0})".format(scale))
         return total
 
 def main():
@@ -514,20 +519,41 @@ def main():
       1, "cup", 149, 30, 0.25, .086, 0, 0, 3, 6.91, 2.5, 3.58, 0, calcium=15, potassium=261)
     garlic_clove = Food("Raw Garlic Clove (11215)",
       -1, "", 3, 4, 0.1, .003, 0, 0, 1, .99, .1, .03, 0, calcium=5, potassium=12)
-    chili_powder = Food("Chili Powder (02009)",
-      1, "tsp", 2.7, 8, .39, .066, 0, 0, 77, 1.34, .9, .18, .36,  calcium=9, potassium=53)
-    ground_cumin = Food("Ground Cumin (02014)",
-      1, "tsp", 2.1, 8, .47, .032, 0, 0, 4, .93, .2, .05, .37, calcium=20, potassium=38)
     crushed_tomatoes = Food("Sprouts Crushed Roma Tomatoes (646670314612)",
       .25, "cup", 61, 20, 0, 0, 0, 0, 15, 4, 1, 3, 1, calcium=0, potassium=186)
     chicken_stock = Food("Chicken Broth (021130370023)",
       1, "cup", 1360./6., 10, 0, 0, 0, 0, 860, 0, 0, 0, 1, calcium=0, potassium=40)
     tomato_paste = Food("Tomato Paste (096619937295)",
       2, "tbsp", 33, 30, 0, 0, 0, 0, 20, 6, 2, 4, 1, calcium=0, potassium=0)
-    #red_kidney_beans = Food()
-    # "desc", sv_vol, "sv_un", sv_mass,
-    # cal, totfat, satf, tranf, chol, sodium, carb, df, sug, prot, calcium=, potassium=)
+    red_kidney_beans = Food("Red Kidney Beans (874875007309) Sprouts",
+      .5, "cup", 130, 110, 0, 0, 0, 0, 140, 20, 8, 1, 8, calcium=59, potassium=466)
+    white_navy_beans = Food("White Navey Beans (072273453821) S&W",
+      .5, "cup", 130, 110, 0, 0, 0, 0, 140, 20, 6, 1, 7, calcium=64, potassium=350)
+    pinto_beans = Food("Pinto Beans (87487500725) Sprouts",
+     .5, "cup", 126, 110, 0, 0, 0, 0, 10, 20, 7, 1, 6, calcium=0, potassium=0)
+    black_beans = Food("Black Beans (072273387737) S&W",
+      .5, "cup", 130, 110, 0, 0, 0, 0, 140, 21, 10, 1, 7, calcium=44, potassium=410)
+    garbonzo_beans = Food("Garbonzo Beans (072273393134) S&W",
+     .5, "cup", 130, 120, 2, 0, 0, 0, 140, 20, 6, 1, 20, calcium=25, potassium=240)
 
+    # Spices
+    chili_powder = Food("Chili Powder (02009)",
+      1, "tsp", 2.7, 8, .39, .066, 0, 0, 77, 1.34, .9, .18, .36,  calcium=9, potassium=53)
+    ground_cumin = Food("Ground Cumin (02014)",
+      1, "tsp", 2.1, 8, .47, .032, 0, 0, 4, .93, .2, .05, .37, calcium=20, potassium=38)
+    crushed_red_pepper = Food("Crushed Red Pepper (02031)",
+      1, "tbsp", 5.3,17, .92, .173, 0, 0, 2, 3, 1.4, .55, .64, calcium=3, potassium=107)
+    oregano_spice = Food("Oregano Spice (02027)",
+     1, "tsp", 1.8, 5, .08, .028, 0, 0, 0, 1.24, .8, .07, .16, calcium=29, potassium=23)
+    basil_spice = Food("Basil Spice (02003)",
+     1, "tbsp", 4.5, 10, .18, .097, 0, 0, 3, 2.15, 1.7, .08, 1.03, calcium=101, potassium=37)
+    coriander_spice = Food("Coriander Space (02013)",
+     1, "tbsp", 5, 15, .89, .050, 0, 0, 35, 2.75, 2.1, 0, .62, calcium=13, potassium=63)
+    bay_leaf_spice = Food("Bay Leaf Spice (02004)",
+     1, "tbsp", 1.8, 6, .15, .041, 0, 0, 0, 1.35, .5, 0, .14, calcium=15, potassium=10)
+    black_peper = Food("Black Peper (02030)",
+     1, "tbsp", 6.9, 17, .22, .096, 0, 0, 1, 4.41, 1.7, .04, .72, calcium=31, potassium=92)
+    
     # "desc", sv_vol, "sv_un", sv_mass,
     # cal, totfat, satf, tranf, chol, sodium, carb, df, sug, prot, calcium=, potassium=)
     # "desc", sv_vol, "sv_un", sv_mass,
@@ -535,21 +561,21 @@ def main():
  
     chili_recipe = Recipe("Low Carb Chili")
     chili_recipe.ingredient(16, "oz", "7% Lean Ground Beef Crumbles", food=ground_beef)
-    chili_recipe.ingredient(1,  "cup",  "Yellow Onion",     food=yellow_onion)
-    chili_recipe.ingredient(1,  "cup",  "Green Pepper",     food=green_pepper)
-    chili_recipe.ingredient(3,  "g",    "Garlic Cloves",    food=garlic_clove)
-    chili_recipe.ingredient(1,  "tbsp", "Chili Powder",     food=chili_powder)
-    chili_recipe.ingredient(1,  "tbsp", "Ground Cumin",     food=ground_cumin)
-    chili_recipe.ingredient(14, "oz",   "Crushed Tomatoes", food=crushed_tomatoes)
-    chili_recipe.ingredient(1,  "cup",  "Chicken Stock",    food=chicken_stock)
-    chili_recipe.ingredient(1,  "tbsp", "Tomato Paste",     food=tomato_paste)
-    #chili_recipe.ingredient(1,  "cup",  "Red Kidney Beans", food=red_kidney_beans)
-
-    #chili_recipe.ingredient(130,    "g",  45130324, "Haunts Choice Cut Driced Tomatoes")
-    #chili_recipe.ingredient(1,    "cup", 45285510, "White Navy Beans")
-    #chili_recipe.ingredient(1,    "cup", 45059563, "Black Navey Beans (Low Sodium)"),
-    #chili_recipe.ingredient(1,    "cup", 45101328, "Chick Peas (Low Sodium)"),
-    #chili_recipe.ingredient(1,    "cup", 45122944, "Low Fat 1% Cottage Cheese")
+    chili_recipe.ingredient(1,  "cup",  "Yellow Onion",               food=yellow_onion)
+    chili_recipe.ingredient(1,  "cup",  "Green Pepper",               food=green_pepper)
+    chili_recipe.ingredient(14, "oz",   "Crushed Tomatoes",           food=crushed_tomatoes)
+    chili_recipe.ingredient(1,  "cup",  "Red Kidney Beans",           food=red_kidney_beans)
+    chili_recipe.ingredient(1,  "cup",  "Chicken Stock",              food=chicken_stock)
+    chili_recipe.ingredient(1,  "tbsp", "Tomato Paste",               food=tomato_paste)
+    chili_recipe.ingredient(6,  "g",    "Garlic Cloves (3g ea.)",     food=garlic_clove)
+    # Spices:
+    chili_recipe.ingredient(1,  "tbsp", "Chili Powder",               food=chili_powder)
+    chili_recipe.ingredient(1,  "tbsp", "Ground Cumin",               food=ground_cumin)
+    chili_recipe.ingredient(1,  "tbsp", "Red Pepper Flakes",          food=crushed_red_pepper)
+    chili_recipe.ingredient(1,  "tsp",  "Ground Coriander",           food=coriander_spice)
+    chili_recipe.ingredient(1,  "tsp",  "Oregano Leafs",              food=oregano_spice)
+    chili_recipe.ingredient(1,  "tsp",  "Basil Leafs",                food=basil_spice)
+    chili_recipe.ingredient(1,  "tsp",  "Bay Leaf (1.8g ea.)",        food=basil_spice)
 
     omlette_recipe = Recipe("Low Carb Omlette")
     omlette_recipe.ingredient(50,  "g", "Whole Raw Egg",          food_id=45273699)
@@ -576,21 +602,24 @@ def main():
     peanut_bar_recipe = Recipe("Peanut Cocoa Crunch Bar")
     peanut_bar_recipe.ingredient(45, "g", "Peanut Cocoa Crunch Bar", food=peanut_bar)
 
+    client = UsdaClient("mQBfPvhuiXk7gZ9gYA8I0gGD3kiKEfQvuDxz04Z8")
+
     day = Day("Today")
     day.meal(omlette_recipe)
     day.meal(shrimp_cocktail_recipe, 2.0)
-    day.meal(dinner_recipe)
+    day.meal(chili_recipe, 1./3.)
     day.meal(peanut_bar_recipe)
     day.meal(peanut_bar_recipe)
-
-    day = Day("Test")
-    day.meal(chili_recipe, 2.0)
-
-    client = UsdaClient("mQBfPvhuiXk7gZ9gYA8I0gGD3kiKEfQvuDxz04Z8")
-    #recipe_total = omlette_recipe.process(client)
-    #recipe_total = dinner_recipe.process(client)
     day_total = day.process(client)
     print(day_total.to_string())
+
+    #day = Day("Chili Recipe")
+    #day.meal(chili_recipe, 2.0)
+    #day_total = day.process(client)
+    ##print(day_total.to_string())
+
+    #recipe_total = omlette_recipe.process(client)
+    #recipe_total = dinner_recipe.process(client)
     return 0
 
 if __name__ == "__main__":
