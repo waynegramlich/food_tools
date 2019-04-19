@@ -25,9 +25,10 @@ VOLUME_CONVERSIONS = {
 
 # Conversion coefficients to grams:
 MASS_CONVERSIONS = {
-  "g":   1.00000,
-  "gm":  1.00000,
-  "oz": 28.349523,
+  "g":    1.00000,
+  "gm":   1.00000,
+  "oz":  28.349523,
+  "onz": 28.349523,
 }
 
 class Day:
@@ -55,17 +56,17 @@ class Day:
         day_total = Food.empty()
         for recipe, scale in recipe_scale_pairs:
             recipe_total = recipe.process(client, scale)
-            day_total += recipe_total * scale
+            day_total += recipe_total
         return day_total
 
 class Food:
-    def __init__(self, description, serving_volume, serving_units, serving_mass, calories,
+    def __init__(self, description, serving_amount, serving_units, serving_mass, calories,
       total_fat, saturated_fat, trans_fat, cholesterol, sodium,
       carbohydrates, dietary_fiber, sugars, protein,
       calcium=None, potassium=None, upc=None, food_id=None):
         # Verify argument types:
         assert isinstance(description, str)
-        assert isinstance(serving_volume, float) or isinstance(serving_volume, int)
+        assert isinstance(serving_amount, float) or isinstance(serving_amount, int)
         assert isinstance(serving_units, str)
         assert isinstance(serving_mass, float)   or isinstance(serving_mass, int)
         assert isinstance(calories, float)       or isinstance(calories, int)
@@ -93,12 +94,12 @@ class Food:
         if not isinstance(food_id, int):
             scale = 100.0 / serving_mass
         if serving_units in VOLUME_CONVERSIONS:
-            milliliters = serving_volume * VOLUME_CONVERSIONS[serving_units]
+            milliliters = serving_amount * VOLUME_CONVERSIONS[serving_units]
             density = serving_mass / milliliters
             #print("amount={0} units='{1}' mass={2} ml={3} density={4}".
-            #  format(serving_volume, serving_units, serving_mass, milliliters, density))
+            #  format(serving_amount, serving_units, serving_mass, milliliters, density))
         #print("Food.__init__():'{0}'\n     sv={1} su='{2}', sm={3}, fi={4} upc={5} scale={6}".
-        #  format(description, serving_volume, serving_units, serving_mass, food_id,
+        #  format(description, serving_amount, serving_units, serving_mass, food_id,
         #    (None if upc is None else '{0}'.format(upc)), scale))
         #print("density={0}".format(density))
 
@@ -110,7 +111,7 @@ class Food:
         # Stuff arugments in to *food* (i.e. *self*):
         food = self
         food.description    = description            # Text
-        food.serving_volume = serving_volume         # The number of *serving_units* in a serving
+        food.serving_amount = serving_amount         # The number of *serving_units* in a serving
         food.serving_units  = serving_units          # The units (e.g. "cup", "tsp", "oz".)
         food.serving_mass   = serving_mass           # The number of grams per serving.
         food.density        = density                # The density of the food (g/ml^3)
@@ -154,17 +155,38 @@ class Food:
           calcium=food1.calcium     + food2.calcium,
           potassium=food1.potassium + food2.potassium,
           food_id=-1)
+        sum.serving_mass = food1.serving_mass + food2.serving_mass
+        sum.calories     = food1.calories     + food2.calories
         return sum
 
-    def __mul__(self, scale):
+    def __mul__(self, grams):
         # Verify argument types:
-        assert isinstance(scale, float)
+        assert isinstance(grams, float)
+
+        #print("Food.__mul__(*, {0:.3f})".format(grams))
 
         food = self
-        scaled = Food("Scaled",
-          0.0,
-          "",
-          food.serving_mass         * scale,
+        scale = grams / 100.0
+        serving_units = food.serving_units
+        if serving_units in VOLUME_CONVERSIONS:
+            density = food.density
+            milliliters = grams / density
+            serving_amount = milliliters / VOLUME_CONVERSIONS[serving_units]
+            #print("__mul__:grams={0:.2f} density={1:.5f}".format(grams, density))
+            #print("__mul__:ml={0:.2f} amount={1:.5f}".format(milliliters, serving_amount))
+        elif serving_units in MASS_CONVERSIONS:
+            serving_amount = grams / MASS_CONVERSIONS[serving_units]
+        else:
+            serving_amount = grams
+            serving_units = "g"
+            #assert False, "Unknown serving unit '{0}':'{1}'".format(
+            #  food.description, serving_units)
+
+        scaled = Food(
+          "{0}g of {1} ".format(grams, food.description),
+          serving_amount,
+          serving_units,
+          grams,
           food.calories             * scale,
           food.total_fat            * scale,
           food.saturated_fat        * scale,
@@ -177,12 +199,33 @@ class Food:
           food.protein              * scale,
           calcium=(food.calcium     * scale),
           potassium=(food.potassium * scale),
-          food_id=-1)
+          food_id=food.food_id,
+          upc=food.upc
+        )
+        scaled.serving_mass  = grams
+        scaled.calories      = food.calories      * scale
+        scaled.total_fat     = food.total_fat     * scale
+        scaled.satruated_fat = food.saturated_fat * scale
+        scaled.trans_fat     = food.trans_fat     * scale
+        scaled.cholesterol   = food.cholesterol   * scale
+        scaled.sodium        = food.sodium        * scale
+        scaled.carbohydrates = food.carbohydrates * scale
+        scaled.dietary_fiber = food.dietary_fiber * scale
+        scaled.sugars        = food.sugars        * scale
+        scaled.protein       = food.protein       * scale
+        scaled.calcium       = food.calcium       * scale
+        scaled.potassium     = food.potassium     * scale
+        #print("food.sodium={0} scale=(1:.2f) scaled.sodium={2}".
+        #  format(food.sodium, scale, scaled.sodium))
+
         return scaled
 
     @staticmethod
     def empty():
-        return Food("Total", 0, "", 100, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, upc="", food_id=-1)
+        food = Food("Total", 0, "", 100, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, upc="", food_id=-1)
+        food.calories = 0.0
+        food.serving_mass = 0.0
+        return food
 
     def caloric_fractions_get(self):
         food = self
@@ -197,6 +240,8 @@ class Food:
         protein_fraction       = protein       / caloric_grams
         #print("sum(fractions)={0}".
         #  format(fat_fraction + carbohydrates_fraction + protein_fraction))
+        food.calories = 0
+        food.serving_mass = 0
         return (fat_fraction, carbohydrates_fraction, protein_fraction)
 
     def summary_string(self, scale=1.0):
@@ -209,7 +254,9 @@ class Food:
         total_fat_percent     = int(100.0 * total_fat / caloric_grams)
         carbohydrates_percent = int(100.0 * carbohydrates / caloric_grams)
         protein_percent       = int(100.0 * protein / caloric_grams)
-        summary ="{0}cal {1}g~={2}(Fat)+{3}(Carb)+{4}g(Prot) (100%~={5}%+{6}%+{7}%)".format(
+        sodium                = scale * food.sodium
+        summary ="{0}cal {1}g~={2}(Fat)+{3}(Carb)+{4}g(Prot) (100%~={5}%+{6}%+{7}%)". \
+          format(
           int(calories),
           int(caloric_grams),
           int(total_fat),
@@ -217,8 +264,7 @@ class Food:
           int(protein),
           total_fat_percent,
           carbohydrates_percent,
-          protein_percent,
-          scale)
+          protein_percent)
         return summary
 
     def to_string(self, heading=None, indent=0):
@@ -294,7 +340,7 @@ class Ingredient:
         if food is None:
             # Initialize all of the *Food* object fields to *None* except *food_id*:
             description    = None
-            serving_volume = None
+            serving_amount = None
             serving_units  = None
             serving_mass   = None
             calories       = None
@@ -341,15 +387,15 @@ class Ingredient:
                 nutrient_unit = nutrient.unit
                 nutrient_value = nutrient.value
     
-                # We only need to grab the *serving_volume*, *serving_units*, and *serving_mass*
+                # We only need to grab the *serving_amount*, *serving_units*, and *serving_mass*
                 # once:
                 if nutrient_index == 0:
                     measures = nutrient.measures
                     #print("measures_type=", type(measures))
                     for measure_index, measure in enumerate(measures):
-                        # Get the *serving_volume*, *serving_mass*, and *serving_units*
+                        # Get the *serving_amount*, *serving_mass*, and *serving_units*
                         # from *measure*:
-                        serving_volume = measure.quantity
+                        serving_amount = measure.quantity
                         serving_mass   = float(measure.gram_equivalent)
                         serving_units  = measure.label.lower()
     
@@ -360,7 +406,7 @@ class Ingredient:
     
                         # Print out the serving size information:
                         #print("Measure[{3}]  {0}{1} => {2}gm".
-                        #  format(serving_volume, serving_units, serving_mass, measure_index))
+                        #  format(serving_amount, serving_units, serving_mass, measure_index))
     
                 #print("  {0}: {1}{2}".format(nutrient_name, nutrient_value, nutrient_unit))
                 if nutrient_name == "Energy":
@@ -402,7 +448,7 @@ class Ingredient:
                 #else:
                 #    print("  -->{0}: {1}{2}".format(nutrient_name, nutrient_value, nutrient_unit))
                     
-            food = Food(food_name, serving_volume, serving_units, serving_mass, calories,
+            food = Food(food_name, serving_amount, serving_units, serving_mass, calories,
               total_fat, saturated_fat, trans_fat, cholesterol, sodium,
               carbohydrates, dietary_fiber, sugars, protein,
               calcium=calcium, potassium=potassium, upc=upc, food_id=food_id)
@@ -455,12 +501,9 @@ class Recipe:
         recipe = self
         print("Recipe: {0}{1}".format(recipe.name,
           ("" if scale == 1.0 else " x {0:.2}".format(scale)) ))
-        foods = list()
         total = Food.empty()
         ingredients = recipe.ingredients
         
-        total_calories = 0.0
-        total_grams = 0.0
         for ingredient_index, ingredient in enumerate(ingredients):
             amount      = ingredient.amount
             units       = ingredient.units
@@ -481,29 +524,48 @@ class Recipe:
                 assert density > 0.0
                 milliliters = amount * VOLUME_CONVERSIONS[units]
                 grams = density * milliliters
-                #print("amount={0} units='{1}' ml={2}, density={3} gm={4}".
+                #print("process:amount={0} units='{1}' ml={2}, density={3} gm={4}".
                 #  format(amount, units, milliliters, density, grams))
             elif units in MASS_CONVERSIONS:
                 #print("mass converstion")
                 grams = amount * MASS_CONVERSIONS[units]
             else:
                 assert False, "No valid conversion for '{0}'".format(units)
-            food_scale = grams / 100.0
-            #print("grams={0} scale={1}".format(grams, scale))
-            scaled_food = food * food_scale
-            foods.append(food)
 
-            total_grams += grams
-            calories = scaled_food.calories
-            total_calories += calories
-            print("[{0:>2}] {1:>5}g{2:>5}g{3:>5}cal  {4:.2f} {5} {6}".
-              format(ingredient_index, int(grams), int(total_grams), int(calories),
-	      amount * scale, units, description))
-            #print(scaled_food.to_string())
-
+            scaled_food = food * (grams * scale)
+            #print("        food.sodium={0} grams={1} scaled_food.sodium={2}".
+            #  format(food.sodium, grams * scale, scaled_food.sodium))
             total += scaled_food
 
-        print(total.summary_string(scale=scale))
+            calories = scaled_food.calories
+            #print("        food.calories={0} scaled_food.calories={1} scale={2}".format(
+            #  food.calories, scaled_food.calories, scale))
+            #print("        food.density={0} scaled_food.density={1} scale={2}".format(
+            #  food.density, scaled_food.density, scale))
+
+            if units in VOLUME_CONVERSIONS:
+                #print("volume converstion")
+                density = food.density
+                assert density > 0.0
+                milliliters = scaled_food.serving_mass / density
+                new_amount = milliliters / VOLUME_CONVERSIONS[units]
+                #print("process:amount={0} units='{1}' ml={2}, density={3} gm={4}".
+                #  format(amount, units, milliliters, density, grams))
+            elif units in MASS_CONVERSIONS:
+                #print("mass converstion")
+                new_amount = scaled_food.serving_mass / MASS_CONVERSIONS[units]
+            else:
+                assert False, "No valid conversion for '{0}'".format(units)
+
+            print("[{0:>2}] {1:>5}g{2:>5}g{3:>5}cal  {4:.2f}{5} {6})".
+              format(ingredient_index, int(scaled_food.serving_mass), int(total.serving_mass),
+              int(scaled_food.calories), new_amount, units, description))
+            #print(scaled_food.to_string())
+
+
+        #print("total_grams={0}g scaled_grams={1}g".
+        #  format(int(total_grams), int(total_grams * scale)))
+        print(total.summary_string())
         print("")
 
         #print("<=Recipe.process(*, *, scale={0})".format(scale))
@@ -538,11 +600,11 @@ def main():
 
     # Spices
     chili_powder = Food("Chili Powder (02009)",
-      1, "tsp", 2.7, 8, .39, .066, 0, 0, 77, 1.34, .9, .18, .36,  calcium=9, potassium=53)
+      1, "tbsp", 8, 23, 1.14, .197, 0, 0, 229, 3.98, 2.8, .58, 1.08, calcium=9, potassium=156)
     ground_cumin = Food("Ground Cumin (02014)",
       1, "tsp", 2.1, 8, .47, .032, 0, 0, 4, .93, .2, .05, .37, calcium=20, potassium=38)
     crushed_red_pepper = Food("Crushed Red Pepper (02031)",
-      1, "tbsp", 5.3,17, .92, .173, 0, 0, 2, 3, 1.4, .55, .64, calcium=3, potassium=107)
+      1, "tsp", 5.3, 17, .92, .173, 0, 0, 2, 3, 1.4, .55, .64, calcium=3, potassium=107)
     oregano_spice = Food("Oregano Spice (02027)",
      1, "tsp", 1.8, 5, .08, .028, 0, 0, 0, 1.24, .8, .07, .16, calcium=29, potassium=23)
     basil_spice = Food("Basil Spice (02003)",
@@ -597,19 +659,22 @@ def main():
     peanut_bar_recipe = Recipe("Peanut Bar")
     peanut_bar_recipe.ingredient(45, "g", "Peanut Bar", food=peanut_bar)
 
-    peanut_bar = Food("Peanut Cocoa Crunch Bar",
+    peppermint_cocoa_crunch_bar = Food("Peppermint Cocoa Crunch Bar",
       -1, "", 45, 160, 5, 3, 0, 5, 170, 18, 5, 8, 15, upc="646049003406")
-    peanut_bar_recipe = Recipe("Peanut Cocoa Crunch Bar")
-    peanut_bar_recipe.ingredient(45, "g", "Peanut Cocoa Crunch Bar", food=peanut_bar)
+    peppermint_bar_recipe = Recipe("Peanut Cocoa Crunch Bar")
+    peppermint_bar_recipe.ingredient(45,
+      "g", "Peppermint Cocoa Crunch Bar", food=peppermint_cocoa_crunch_bar)
 
     client = UsdaClient("mQBfPvhuiXk7gZ9gYA8I0gGD3kiKEfQvuDxz04Z8")
 
     day = Day("Today")
     day.meal(omlette_recipe)
+    #day.meal(shrimp_cocktail_recipe)
     day.meal(shrimp_cocktail_recipe, 2.0)
     day.meal(chili_recipe, 1./3.)
+    #day.meal(chili_recipe)
     day.meal(peanut_bar_recipe)
-    day.meal(peanut_bar_recipe)
+    day.meal(peppermint_bar_recipe)
     day_total = day.process(client)
     print(day_total.to_string())
 
